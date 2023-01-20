@@ -1,28 +1,26 @@
-#include <string>
-#include <iostream>
 #include "requests.h"
+#include <iostream>
 #include <nlohmann/json.hpp>
+#include <string>
 
 class Radio {
-    public:
-        std::string href;
-        std::string title;
-        std::string id;
+  public:
+    std::string href;
+    std::string title;
+    std::string id;
 
-        Radio(std::string title, std::string href) {
-            this->href = href;
-            this->title = title;
-            this->id = this->extractId(href);
-        }
-
-    void print() {
-        std::cout << this->title << std::endl;
+    Radio(std::string title, std::string href) {
+        this->href = href;
+        this->title = title;
+        this->id = this->extractId(href);
     }
+
+    void print() { std::cout << this->title << std::endl; }
 
     static std::string extractId(std::string href) {
         std::string delimiter = "/";
         std::string id = href.substr(href.find_last_of(delimiter) + 1);
-        return id;        
+        return id;
     }
 
     std::string buildUrl() {
@@ -30,7 +28,8 @@ class Radio {
         std::time_t now = std::time(0);
         std::string epoch = std::to_string(now);
 
-        std::string url = "https://radio.garden/api/ara/content/listen/" + this->id +"/channel.mp3?" + epoch;
+        std::string url = "https://radio.garden/api/ara/content/listen/" +
+                          this->id + "/channel.mp3?" + epoch;
         return url;
     }
 
@@ -39,7 +38,8 @@ class Radio {
         // std::cout << url << std::endl;
 
         // Open pipe to mpv
-        std::string cmd = "ffmpeg -loglevel error -i " + url + " -f mp3 - | mpv -";
+        std::string cmd =
+            "ffmpeg -loglevel error -i " + url + " -f mp3 - | mpv -";
         char *cmd_c_str = new char[cmd.length() + 1];
         std::strcpy(cmd_c_str, cmd.c_str());
         auto pipe = popen(cmd_c_str, "w");
@@ -49,19 +49,17 @@ class Radio {
 
         pclose(pipe);
     }
-
-
 };
 
 class Stations {
-    public:
-        std::vector<Radio> radios;
-        std::string id;
-        std::string title;
-        std::string country;
-        nlohmann::json jsonData;
-        bool built;
-        int selected_station;
+  public:
+    std::vector<Radio> radios;
+    std::string id;
+    std::string title;
+    std::string country;
+    nlohmann::json jsonData;
+    bool built;
+    int selected_station;
 
     Stations(std::string id, std::string title, std::string country) {
         this->id = id;
@@ -79,7 +77,8 @@ class Stations {
 
     void getStationJson() {
         std::string buffer;
-        std::string gardenRadio = "https://radio.garden/api/ara/content/page/" + this->id;
+        std::string gardenRadio =
+            "https://radio.garden/api/ara/content/page/" + this->id;
 
         // Gets radio
         get(gardenRadio, buffer, false, "radio.json");
@@ -87,18 +86,16 @@ class Stations {
         // Parses the JSON
         try {
             this->jsonData = nlohmann::json::parse(buffer);
-        }
-        catch (nlohmann::json::parse_error& e) {
+        } catch (nlohmann::json::parse_error &e) {
             std::cout << "Error: " << e.what() << std::endl;
         }
-
     }
 
-    void buildStations() {   
+    void buildStations() {
         this->getStationJson();
         this->title = this->jsonData["data"]["content"][0]["title"];
 
-        for (auto content: this->jsonData["data"]["content"]) {
+        for (auto content : this->jsonData["data"]["content"]) {
             for (auto element : content["items"]) {
                 if (element.contains("href")) {
                     std::string href = element["href"];
@@ -115,23 +112,20 @@ class Stations {
     void print() {
         if (!this->built) {
             std::cout << "[*] buildStations() not called yet." << std::endl;
-        }
-        else {
+        } else {
             std::cout << "Stations found: " << this->radios.size() << std::endl;
             for (int i = 0; i < this->radios.size(); i++) {
                 Radio radio = this->radios.at(i);
                 std::cout << "[" << i << "] ";
                 radio.print();
-            } 
+            }
         }
-
     }
 
     void selectRadio() {
         if (!this->built) {
             std::cout << "[*] buildStations() not called yet." << std::endl;
-        }
-        else {
+        } else {
             this->print();
             std::cout << "Select a station: ";
             std::cin >> this->selected_station;
@@ -141,13 +135,11 @@ class Stations {
     void playRadio() {
         if (!this->built) {
             std::cout << "[*] buildStations() not called yet." << std::endl;
-        }
-        else {
+        } else {
             Radio radio = this->radios.at(this->selected_station);
             radio.openAudioStream();
         }
     }
-
 };
 
 // int main(int argc, char *argv[]) {

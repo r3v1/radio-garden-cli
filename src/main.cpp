@@ -1,11 +1,11 @@
+#include "radio.cpp"
+#include "requests.h"
+#include <fstream>
+#include <iostream>
 #include <nlohmann/json.hpp>
+#include <regex>
 #include <string>
 #include <vector>
-#include "requests.h"
-#include <iostream>
-#include <fstream>
-#include "radio.cpp"
-#include <regex>
 
 std::vector<Stations> readStations() {
     std::ifstream f("places.json");
@@ -16,15 +16,14 @@ std::vector<Stations> readStations() {
         std::string url = "https://radio.garden/api/ara/content/places";
         get(url, buffer, true, "places.json");
         jsonData = nlohmann::json::parse(buffer);
-    }
-    else {
+    } else {
         jsonData = nlohmann::json::parse(f);
     }
 
     auto list = jsonData["data"]["list"];
 
     std::vector<Stations> stationsList;
-    for (auto item: list) {
+    for (auto item : list) {
         std::string title = item["title"];
         // std::string url = item["url"];
         std::string country = item["country"];
@@ -41,19 +40,18 @@ std::vector<Stations> readStations() {
 
 void printStations() {
     std::vector<Stations> stationsList = readStations();
-    for (Stations stations: stationsList) {
+    for (Stations stations : stationsList) {
         std::cout << stations.title << " -- " << stations.country << std::endl;
     }
 
     std::cout << "Total stations: " << stationsList.size() << std::endl;
 }
 
-
 Stations filterByPlace(std::string place) {
     std::vector<Stations> stationsList = readStations();
     std::vector<Stations> filteredStations;
 
-    for (Stations stations: stationsList) {
+    for (Stations stations : stationsList) {
         // TODO: Find by regex
         if (stations.title == place) {
             filteredStations.push_back(stations);
@@ -65,15 +63,14 @@ Stations filterByPlace(std::string place) {
     if (filteredStations.size() == 0) {
         std::cout << "No stations found" << std::endl;
         exit(0);
-    }
-    else if (filteredStations.size() == 1) {
+    } else if (filteredStations.size() == 1) {
         std::cout << "1 station found" << std::endl;
-    }
-    else {
+    } else {
         std::cout << filteredStations.size() << " stations found" << std::endl;
         int i = 0;
-        for (Stations stations: filteredStations) {
-            std::cout << "[" << i << "] " << stations.title << " -- " << stations.country << std::endl;
+        for (Stations stations : filteredStations) {
+            std::cout << "[" << i << "] " << stations.title << " -- "
+                      << stations.country << std::endl;
             i++;
         }
         std::cout << "Select a station: ";
@@ -82,7 +79,7 @@ Stations filterByPlace(std::string place) {
         if (idx > i) {
             std::cout << "Invalid index" << std::endl;
             exit(0);
-        } 
+        }
     }
 
     return filteredStations.at(idx);
@@ -97,11 +94,9 @@ void helpMenu() {
     std::cout << "  -v, --version\t\tShow version" << std::endl;
 }
 
-void showVersion() {
-    std::cout << "Radio Garden CLI v0.1.0" << std::endl;
-}
+void showVersion() { std::cout << "Radio Garden CLI v0.1.0" << std::endl; }
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
     if (argc == 1) {
         helpMenu();
         return 0;
@@ -111,22 +106,18 @@ int main(int argc, char** argv) {
 
     if (option == "-h" || option == "--help") {
         helpMenu();
-    }
-    else if (option == "-v" || option == "--version") {
+    } else if (option == "-v" || option == "--version") {
         showVersion();
-    }
-    else if (option == "-l" || option == "--list") {
+    } else if (option == "-l" || option == "--list") {
         printStations();
-    }
-    else if (option == "-p" || option == "--play") {
+    } else if (option == "-p" || option == "--play") {
         std::string by = argv[2];
         // searchRadios(by);
         Stations stations = filterByPlace(by);
         stations.buildStations();
         stations.selectRadio();
         stations.playRadio();
-    }
-    else {
+    } else {
         std::cout << "Invalid option" << std::endl;
         helpMenu();
     }

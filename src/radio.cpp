@@ -1,4 +1,4 @@
-#include "requests.h"
+#include "requests.cpp"
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -60,6 +60,7 @@ class Stations {
     nlohmann::json jsonData;
     bool built;
     int selected_station;
+    Http httpClient;
 
     Stations(std::string id, std::string title, std::string country) {
         this->id = id;
@@ -81,7 +82,7 @@ class Stations {
             "https://radio.garden/api/ara/content/page/" + this->id;
 
         // Gets radio
-        get(gardenRadio, buffer, false, "radio.json");
+        this->httpClient.get(gardenRadio, buffer, false, "radio.json");
 
         // Parses the JSON
         try {

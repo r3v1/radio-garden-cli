@@ -1,5 +1,4 @@
 #include "radio.cpp"
-#include "requests.h"
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
@@ -10,11 +9,12 @@
 std::vector<Stations> readStations() {
     std::ifstream f("places.json");
     nlohmann::json jsonData;
+    Http httpClient;
     if (!f.good()) {
         // Download the file if missing
         std::string buffer;
         std::string url = "https://radio.garden/api/ara/content/places";
-        get(url, buffer, true, "places.json");
+        httpClient.get(url, buffer, true, "places.json");
         jsonData = nlohmann::json::parse(buffer);
     } else {
         jsonData = nlohmann::json::parse(f);
@@ -94,7 +94,7 @@ void helpMenu() {
     std::cout << "  -v, --version\t\tShow version" << std::endl;
 }
 
-void showVersion() { std::cout << "Radio Garden CLI v0.1.0" << std::endl; }
+void showVersion() { std::cout << "Radio Garden CLI v0.1.1" << std::endl; }
 
 int main(int argc, char **argv) {
     if (argc == 1) {

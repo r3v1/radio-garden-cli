@@ -32,22 +32,12 @@ class Radio {
                           this->id + "/channel.mp3?" + epoch;
         return url;
     }
-
+    
     void openAudioStream() {
         std::string url = this->buildUrl();
-        // std::cout << url << std::endl;
 
-        // Open pipe to mpv
-        std::string cmd =
-            "ffmpeg -loglevel error -i " + url + " -f mp3 - | mpv -";
-        char *cmd_c_str = new char[cmd.length() + 1];
-        std::strcpy(cmd_c_str, cmd.c_str());
-        auto pipe = popen(cmd_c_str, "w");
-        if (!pipe) {
-            std::cerr << "Failed to open pipe to MPV" << std::endl;
-        }
-
-        pclose(pipe);
+        std::string cmd = "mpv --no-video " + url;
+        system(cmd.c_str());
     }
 };
 

@@ -94,7 +94,7 @@ void helpMenu() {
     std::cout << "  -v, --version\t\tShow version" << std::endl;
 }
 
-void showVersion() { std::cout << "Radio Garden CLI v0.1.1" << std::endl; }
+void showVersion() { std::cout << "Radio Garden CLI v0.1.2" << std::endl; }
 
 int main(int argc, char **argv) {
     if (argc == 1) {

@@ -1,6 +1,6 @@
 # Radio Garden CLI
 
-A simple CLI for [Radio Garden](https://radio.garden/). Made for educational purposes for  learning C++. 
+A simple CLI for [Radio Garden](https://radio.garden/). Made for educational purposes for  learning C++.
 
 It works scraping the main page of Radio Garden and parsing the JSON response. It uses [nlohmann/json](https://github.com/nlohmann/json)
 for parsing the JSON response. Once the stations are parsed, it uses [mpv](https://mpv.io/) to play the streams.
@@ -8,11 +8,13 @@ for parsing the JSON response. Once the stations are parsed, it uses [mpv](https
 ## Dependencies
 
 On Arch Linux:
+
 ```
 pacman -S nlohmann-json mpv
 ```
 
 ## Building
+
 ```sh
 make
 ```
@@ -30,7 +32,6 @@ Play stations by location:
 ```sh
 ./radio -p "Varna"
 ```
-
 
 # Comments
 

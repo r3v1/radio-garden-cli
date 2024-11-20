@@ -98,12 +98,15 @@ class Stations {
 
         for (auto content : this->jsonData["data"]["content"]) {
             for (auto element : content["items"]) {
-                if (element.contains("href")) {
-                    std::string href = element["href"];
-                    std::string title = element["title"];
+                if (element.contains("page")) {
+                    auto page= element["page"];
+                    if (page.contains("url")) {
+                        std::string url = page["url"];
+                        std::string title = page["title"];
 
-                    Radio radio = Radio(title, href);
-                    this->radios.push_back(radio);
+                        Radio radio = Radio(title, url);
+                        this->radios.push_back(radio);
+                    }
                 }
             }
         }

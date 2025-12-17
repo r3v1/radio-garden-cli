@@ -1,4 +1,4 @@
-#include "radio.cpp"
+#include "tui.cpp"
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
@@ -86,11 +86,13 @@ Stations filterByPlace(std::string place) {
 }
 
 void helpMenu() {
-    std::cout << "Usage: radio [LOCATION]" << std::endl;
+    std::cout << "Usage: radio [OPTION]" << std::endl;
     std::cout << "Options:" << std::endl;
+    std::cout << "  (no args)\t\tLaunch TUI to select country and station" << std::endl;
     std::cout << "  -h, --help\t\tShow this help menu" << std::endl;
     std::cout << "  -l, --list\t\tList all radios" << std::endl;
-    std::cout << "  -p, --play <place>\t\tPlay radio from <place>" << std::endl;
+    std::cout << "  -p, --play <place>\tPlay radio from <place>" << std::endl;
+    std::cout << "  -t, --tui\t\tLaunch TUI to select country and station" << std::endl;
     std::cout << "  -v, --version\t\tShow version" << std::endl;
 }
 
@@ -98,7 +100,8 @@ void showVersion() { std::cout << "Radio Garden CLI v0.1.2" << std::endl; }
 
 int main(int argc, char **argv) {
     if (argc == 1) {
-        helpMenu();
+        // Launch TUI when no arguments provided
+        runTUI();
         return 0;
     }
 
@@ -110,7 +113,15 @@ int main(int argc, char **argv) {
         showVersion();
     } else if (option == "-l" || option == "--list") {
         printStations();
+    } else if (option == "-t" || option == "--tui") {
+        // Launch TUI explicitly
+        runTUI();
     } else if (option == "-p" || option == "--play") {
+        if (argc < 3) {
+            std::cout << "Error: -p/--play requires a place argument" << std::endl;
+            helpMenu();
+            return 1;
+        }
         std::string by = argv[2];
         // searchRadios(by);
         Stations stations = filterByPlace(by);

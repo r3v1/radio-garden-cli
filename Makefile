@@ -1,6 +1,6 @@
 CC = g++
 CFLAGS = -std=c++11 -I/usr/include
-LIBS = -lcurl 
+LIBS = -lcurl -lncurses
 SOURCES = src/main.cpp src/radio.cpp src/requests.cpp
 EXECUTABLE = radio
 

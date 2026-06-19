@@ -1,151 +1,133 @@
-#include "requests.cpp"
+#include "radio.hpp"
+
+#include <ctime>
 #include <iostream>
-#include <nlohmann/json.hpp>
-#include <string>
 
-class Radio {
-  public:
-    std::string href;
-    std::string title;
-    std::string id;
+Radio::Radio(const std::string &title, const std::string &href) {
+    this->href = href;
+    this->title = title;
+    this->id = extractId(href);
+}
 
-    Radio(std::string title, std::string href) {
-        this->href = href;
-        this->title = title;
-        this->id = this->extractId(href);
+void Radio::print() const { std::cout << this->title << std::endl; }
+
+std::string Radio::extractId(const std::string &href) {
+    return href.substr(href.find_last_of('/') + 1);
+}
+
+std::string radioBuildUrl(const std::string &radioId) {
+    std::time_t now = std::time(nullptr);
+    return "https://radio.garden/api/ara/content/listen/" + radioId +
+           "/channel.mp3?" + std::to_string(now);
+}
+
+std::string Radio::buildUrl() const { return radioBuildUrl(this->id); }
+
+std::vector<RadioEntry>
+parseRadiosFromPageJson(const nlohmann::json &json, const std::string &placeId,
+                        const std::string &placeTitle,
+                        const std::string &country) {
+    std::vector<RadioEntry> entries;
+    if (!json.contains("data") || !json["data"].contains("content")) {
+        return entries;
     }
 
-    void print() { std::cout << this->title << std::endl; }
+    for (const auto &content : json["data"]["content"]) {
+        if (!content.contains("items")) {
+            continue;
+        }
+        for (const auto &element : content["items"]) {
+            if (!element.contains("page")) {
+                continue;
+            }
+            const auto &page = element["page"];
+            if (!page.contains("url") || !page.contains("title")) {
+                continue;
+            }
+            RadioEntry entry;
+            entry.href = page["url"].get<std::string>();
+            entry.radio_title = page["title"].get<std::string>();
+            entry.id = Radio::extractId(entry.href);
+            entry.place_id = placeId;
+            entry.place_title = placeTitle;
+            entry.country = country;
+            entries.push_back(entry);
+        }
+    }
+    return entries;
+}
 
-    static std::string extractId(std::string href) {
-        std::string delimiter = "/";
-        std::string id = href.substr(href.find_last_of(delimiter) + 1);
-        return id;
+Stations::Stations(const std::string &id, const std::string &title,
+                   const std::string &country) {
+    this->id = id;
+    this->title = title;
+    this->country = country;
+    this->built = false;
+    this->selected_station = 0;
+}
+
+Stations::Stations(const std::string &id) {
+    this->id = id;
+    this->built = false;
+    this->selected_station = 0;
+}
+
+void Stations::getStationJson() {
+    std::string buffer;
+    std::string gardenRadio =
+        "https://radio.garden/api/ara/content/page/" + this->id;
+    this->httpClient.get(gardenRadio, buffer, false, "");
+    try {
+        this->jsonData = nlohmann::json::parse(buffer);
+    } catch (nlohmann::json::parse_error &e) {
+        std::cout << "Error: " << e.what() << std::endl;
+    }
+}
+
+void Stations::buildStations() {
+    this->getStationJson();
+    if (this->jsonData.contains("data") &&
+        this->jsonData["data"].contains("content") &&
+        !this->jsonData["data"]["content"].empty()) {
+        this->title = this->jsonData["data"]["content"][0]["title"];
     }
 
-    std::string buildUrl() {
-        // Current epoch time
-        std::time_t now = std::time(0);
-        std::string epoch = std::to_string(now);
-
-        std::string url = "https://radio.garden/api/ara/content/listen/" +
-                          this->id + "/channel.mp3?" + epoch;
-        return url;
+    auto entries = parseRadiosFromPageJson(this->jsonData, this->id, this->title,
+                                           this->country);
+    for (const auto &entry : entries) {
+        this->radios.push_back(Radio(entry.radio_title, entry.href));
     }
-    
-    void openAudioStream() {
-        std::string url = this->buildUrl();
+    this->built = true;
+}
 
-        std::string cmd = "mpv --no-video " + url;
+void Stations::print() const {
+    if (!this->built) {
+        std::cout << "[*] buildStations() not called yet." << std::endl;
+    } else {
+        std::cout << "Stations found: " << this->radios.size() << std::endl;
+        for (size_t i = 0; i < this->radios.size(); i++) {
+            std::cout << "[" << i << "] ";
+            this->radios.at(i).print();
+        }
+    }
+}
+
+void Stations::selectRadio() {
+    if (!this->built) {
+        std::cout << "[*] buildStations() not called yet." << std::endl;
+    } else {
+        this->print();
+        std::cout << "Select a station: ";
+        std::cin >> this->selected_station;
+    }
+}
+
+void Stations::playRadio() {
+    if (!this->built) {
+        std::cout << "[*] buildStations() not called yet." << std::endl;
+    } else {
+        Radio radio = this->radios.at(this->selected_station);
+        std::string cmd = "mpv --no-video --http-header-fields='Referer: https://radio.garden/' " + radio.buildUrl();
         system(cmd.c_str());
     }
-};
-
-class Stations {
-  public:
-    std::vector<Radio> radios;
-    std::string id;
-    std::string title;
-    std::string country;
-    nlohmann::json jsonData;
-    bool built;
-    int selected_station;
-    Http httpClient;
-
-    Stations(std::string id, std::string title, std::string country) {
-        this->id = id;
-        this->title = title;
-        this->built = false;
-        this->country = country;
-        this->selected_station = 0;
-    }
-
-    Stations(std::string id) {
-        this->id = id;
-        this->built = false;
-        this->selected_station = 0;
-    }
-
-    void getStationJson() {
-        std::string buffer;
-        std::string gardenRadio =
-            "https://radio.garden/api/ara/content/page/" + this->id;
-
-        // Gets radio
-        this->httpClient.get(gardenRadio, buffer, false, "radio.json");
-
-        // Parses the JSON
-        try {
-            this->jsonData = nlohmann::json::parse(buffer);
-        } catch (nlohmann::json::parse_error &e) {
-            std::cout << "Error: " << e.what() << std::endl;
-        }
-    }
-
-    void buildStations() {
-        this->getStationJson();
-        this->title = this->jsonData["data"]["content"][0]["title"];
-
-        for (auto content : this->jsonData["data"]["content"]) {
-            for (auto element : content["items"]) {
-                if (element.contains("page")) {
-                    auto page= element["page"];
-                    if (page.contains("url")) {
-                        std::string url = page["url"];
-                        std::string title = page["title"];
-
-                        Radio radio = Radio(title, url);
-                        this->radios.push_back(radio);
-                    }
-                }
-            }
-        }
-        this->built = true;
-    }
-
-    void print() {
-        if (!this->built) {
-            std::cout << "[*] buildStations() not called yet." << std::endl;
-        } else {
-            std::cout << "Stations found: " << this->radios.size() << std::endl;
-            for (int i = 0; i < this->radios.size(); i++) {
-                Radio radio = this->radios.at(i);
-                std::cout << "[" << i << "] ";
-                radio.print();
-            }
-        }
-    }
-
-    void selectRadio() {
-        if (!this->built) {
-            std::cout << "[*] buildStations() not called yet." << std::endl;
-        } else {
-            this->print();
-            std::cout << "Select a station: ";
-            std::cin >> this->selected_station;
-        }
-    }
-
-    void playRadio() {
-        if (!this->built) {
-            std::cout << "[*] buildStations() not called yet." << std::endl;
-        } else {
-            Radio radio = this->radios.at(this->selected_station);
-            radio.openAudioStream();
-        }
-    }
-};
-
-// int main(int argc, char *argv[]) {
-//     if (argc < 2) {
-//         std::cout << "Usage: " << argv[0] << " <station_id>" << std::endl;
-//         return 1;
-//     }
-
-//     std::string id = argv[1];
-//     // std::string id = "DFYIUBpn";
-//     // std::string id = "GBrGVmKv";
-//     Stations stations = Stations(id);
-//     stations.buildStations();
-//     stations.selectRadio();
-// }
+}

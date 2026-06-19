@@ -1,58 +1,42 @@
-#include "tui.cpp"
+#include "index.hpp"
+#include "mpris.hpp"
+#include "paths.hpp"
+#include "player.hpp"
+#include "radio.hpp"
+#include "state.hpp"
+#include "tui.hpp"
+
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
-#include <regex>
 #include <string>
 #include <vector>
 
 std::vector<Stations> readStations() {
-    std::ifstream f("places.json");
-    nlohmann::json jsonData;
-    Http httpClient;
-    if (!f.good()) {
-        // Download the file if missing
-        std::string buffer;
-        std::string url = "https://radio.garden/api/ara/content/places";
-        httpClient.get(url, buffer, true, "places.json");
-        jsonData = nlohmann::json::parse(buffer);
-    } else {
-        jsonData = nlohmann::json::parse(f);
-    }
-
-    auto list = jsonData["data"]["list"];
-
+    auto json = loadPlacesJson();
     std::vector<Stations> stationsList;
-    for (auto item : list) {
+    for (const auto &item : json["data"]["list"]) {
         std::string title = item["title"];
-        // std::string url = item["url"];
         std::string country = item["country"];
         std::string id = item["id"];
-        // double latitude = item["geo"][1];
-        // double longitude = item["geo"][0];
-
-        Stations stations(id, title, country);
-        stationsList.push_back(stations);
+        stationsList.emplace_back(id, title, country);
     }
-
     return stationsList;
 }
 
 void printStations() {
     std::vector<Stations> stationsList = readStations();
-    for (Stations stations : stationsList) {
+    for (const Stations &stations : stationsList) {
         std::cout << stations.title << " -- " << stations.country << std::endl;
     }
-
     std::cout << "Total stations: " << stationsList.size() << std::endl;
 }
 
-Stations filterByPlace(std::string place) {
+Stations filterByPlace(const std::string &place) {
     std::vector<Stations> stationsList = readStations();
     std::vector<Stations> filteredStations;
 
-    for (Stations stations : stationsList) {
-        // TODO: Find by regex
+    for (const Stations &stations : stationsList) {
         if (stations.title == place) {
             filteredStations.push_back(stations);
         }
@@ -60,7 +44,7 @@ Stations filterByPlace(std::string place) {
 
     int idx = 0;
     std::cout << "Found stations at " << place << ": " << std::endl;
-    if (filteredStations.size() == 0) {
+    if (filteredStations.empty()) {
         std::cout << "No stations found" << std::endl;
         exit(0);
     } else if (filteredStations.size() == 1) {
@@ -68,15 +52,14 @@ Stations filterByPlace(std::string place) {
     } else {
         std::cout << filteredStations.size() << " stations found" << std::endl;
         int i = 0;
-        for (Stations stations : filteredStations) {
+        for (const Stations &stations : filteredStations) {
             std::cout << "[" << i << "] " << stations.title << " -- "
                       << stations.country << std::endl;
             i++;
         }
         std::cout << "Select a station: ";
         std::cin >> idx;
-
-        if (idx > i) {
+        if (idx >= i) {
             std::cout << "Invalid index" << std::endl;
             exit(0);
         }
@@ -88,20 +71,38 @@ Stations filterByPlace(std::string place) {
 void helpMenu() {
     std::cout << "Usage: radio [OPTION]" << std::endl;
     std::cout << "Options:" << std::endl;
-    std::cout << "  (no args)\t\tLaunch TUI to select country and station" << std::endl;
+    std::cout << "  (no args)\t\tLaunch TUI (Spain) and resume last station"
+              << std::endl;
     std::cout << "  -h, --help\t\tShow this help menu" << std::endl;
-    std::cout << "  -l, --list\t\tList all radios" << std::endl;
+    std::cout << "  -l, --list\t\tList all places" << std::endl;
     std::cout << "  -p, --play <place>\tPlay radio from <place>" << std::endl;
-    std::cout << "  -t, --tui\t\tLaunch TUI to select country and station" << std::endl;
+    std::cout << "  -t, --tui\t\tLaunch TUI (Spain)" << std::endl;
     std::cout << "  -v, --version\t\tShow version" << std::endl;
+    std::cout << std::endl;
+    std::cout << "TUI keys:" << std::endl;
+    std::cout << "  Navigate: j/k move, h back, l/Enter select, / search"
+              << std::endl;
+    std::cout << "  Search: type freely (incl. h/j/k/l), Esc done, Enter confirm"
+              << std::endl;
+    std::cout << "  Media: Space pause, ] next, [ prev" << std::endl;
 }
 
-void showVersion() { std::cout << "Radio Garden CLI v0.2.0" << std::endl; }
+void showVersion() { std::cout << "Radio Garden CLI v0.3.0" << std::endl; }
 
 int main(int argc, char **argv) {
+    ensureDir(getCacheDir());
+    ensureDir(getConfigDir());
+
     if (argc == 1) {
-        // Launch TUI when no arguments provided
-        runTUI();
+        loadPlacesJson();
+        startMprisServer();
+        auto state = loadState();
+        if (state && validateState(*state)) {
+            PlayerController::instance().resume(*state);
+            notifyMprisMetadata(state->radio_title, state->place_title, true);
+        }
+        runTUI("Spain");
+        stopMprisServer();
         return 0;
     }
 
@@ -114,16 +115,23 @@ int main(int argc, char **argv) {
     } else if (option == "-l" || option == "--list") {
         printStations();
     } else if (option == "-t" || option == "--tui") {
-        // Launch TUI explicitly
-        runTUI();
+        loadPlacesJson();
+        startMprisServer();
+        auto state = loadState();
+        if (state && validateState(*state)) {
+            PlayerController::instance().resume(*state);
+            notifyMprisMetadata(state->radio_title, state->place_title, true);
+        }
+        runTUI("Spain");
+        stopMprisServer();
     } else if (option == "-p" || option == "--play") {
         if (argc < 3) {
-            std::cout << "Error: -p/--play requires a place argument" << std::endl;
+            std::cout << "Error: -p/--play requires a place argument"
+                      << std::endl;
             helpMenu();
             return 1;
         }
         std::string by = argv[2];
-        // searchRadios(by);
         Stations stations = filterByPlace(by);
         stations.buildStations();
         stations.selectRadio();

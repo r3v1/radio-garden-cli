@@ -99,7 +99,11 @@ bool MpvClient::waitForSocket(int retriesMs) const {
 
 bool MpvClient::sendCommand(const std::string &command) const {
     std::string reply;
-    return sendCommandWithReply(command, reply);
+    if (!sendCommandWithReply(command, reply)) {
+        return false;
+    }
+    // mpv answers {"error":"success"} or e.g. {"error":"invalid parameter"}.
+    return reply.find("\"error\":\"success\"") != std::string::npos;
 }
 
 bool MpvClient::sendCommandWithReply(const std::string &command,
@@ -183,8 +187,11 @@ bool MpvClient::launch(const std::string &url) {
 }
 
 bool MpvClient::loadFile(const std::string &url) {
+    // The Referer header was set at launch (--http-header-fields) and is kept.
+    // Don't pass an options object: since mpv 0.38 the 4th argument is the
+    // playlist index, so it fails with "invalid parameter".
     std::string cmd = "{\"command\":[\"loadfile\",\"" + jsonEscape(url) +
-                      "\",\"replace\",{\"referrer\":\"https://radio.garden/\"}]}";
+                      "\",\"replace\"]}";
     return sendCommand(cmd);
 }
 

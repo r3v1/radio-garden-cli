@@ -231,6 +231,8 @@ class PlayerBridge {
         }
         cv_.notify_all();
         thread_.join();
+        // Don't leave mpv playing in the background after quitting.
+        PlayerController::instance().stop();
     }
 
     void play(const RadioEntry &entry, std::vector<RadioEntry> queue,

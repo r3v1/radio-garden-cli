@@ -16,6 +16,15 @@ static SearchRow makeSearchRow(const RadioEntry &entry) {
     return row;
 }
 
+// Caches written before the parser skipped place links still contain them.
+static void dropNonRadios(std::vector<RadioEntry> &entries) {
+    entries.erase(std::remove_if(entries.begin(), entries.end(),
+                                 [](const RadioEntry &e) {
+                                     return !isRadioHref(e.href);
+                                 }),
+                  entries.end());
+}
+
 nlohmann::json loadPlacesJson() {
     std::ifstream f(getPlacesPath());
     Http http;
@@ -55,7 +64,9 @@ std::vector<RadioEntry> fetchPlaceRadios(const std::string &placeId,
     if (cache.good()) {
         try {
             nlohmann::json j = nlohmann::json::parse(cache);
-            return j.get<std::vector<RadioEntry>>();
+            auto entries = j.get<std::vector<RadioEntry>>();
+            dropNonRadios(entries);
+            return entries;
         } catch (...) {
         }
     }
@@ -99,6 +110,7 @@ bool RadioIndex::loadPlaceFromCache(const std::string &placeId,
     }
     try {
         out = nlohmann::json::parse(cache).get<std::vector<RadioEntry>>();
+        dropNonRadios(out);
         return true;
     } catch (...) {
         return false;

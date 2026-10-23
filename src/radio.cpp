@@ -23,6 +23,10 @@ std::string radioBuildUrl(const std::string &radioId) {
 
 std::string Radio::buildUrl() const { return radioBuildUrl(this->id); }
 
+bool isRadioHref(const std::string &href) {
+    return href.rfind("/listen/", 0) == 0;
+}
+
 std::vector<RadioEntry>
 parseRadiosFromPageJson(const nlohmann::json &json, const std::string &placeId,
                         const std::string &placeTitle,
@@ -42,6 +46,11 @@ parseRadiosFromPageJson(const nlohmann::json &json, const std::string &placeId,
             }
             const auto &page = element["page"];
             if (!page.contains("url") || !page.contains("title")) {
+                continue;
+            }
+            // Pages also link to other places ("/visit/..."); only
+            // "/listen/..." items are playable radios.
+            if (!isRadioHref(page["url"].get<std::string>())) {
                 continue;
             }
             RadioEntry entry;

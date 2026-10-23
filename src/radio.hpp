@@ -74,6 +74,8 @@ class Stations {
     void playRadio();
 };
 
+// True for "/listen/..." hrefs; "/visit/..." ones are places, not radios.
+bool isRadioHref(const std::string &href);
 std::string radioBuildUrl(const std::string &radioId);
 std::vector<RadioEntry>
 parseRadiosFromPageJson(const nlohmann::json &json, const std::string &placeId,

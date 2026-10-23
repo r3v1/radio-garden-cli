@@ -1,151 +1,96 @@
 #pragma once
 
-#include <cctype>
-#include <sstream>
+#include <algorithm>
+#include <cstdint>
 #include <string>
 #include <vector>
 
+namespace search_detail {
+
+inline bool isAsciiAlnum(char c) {
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') ||
+           (c >= 'A' && c <= 'Z');
+}
+
+inline bool isAsciiSpace(char c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
+
+// U+00C0..U+00FF folded to ASCII.
+inline const char *foldLatin1(uint32_t cp) {
+    static const char *const table[64] = {
+        "a",  "a", "a", "a", "a", "a", "ae", "c", "e", "e", "e",
+        "e",  "i", "i", "i", "i", "d", "n",  "o", "o", "o", "o",
+        "o",  "x", "o", "u", "u", "u", "u",  "y", "th", "ss", "a",
+        "a",  "a", "a", "a", "a", "ae", "c", "e", "e", "e",  "e",
+        "i",  "i", "i", "i", "d", "n", "o",  "o", "o", "o",  "o",
+        "/",  "o", "u", "u", "u", "u", "y",  "th", "y"};
+    return table[cp - 0xC0];
+}
+
+// U+0100..U+017F folded to ASCII.
+inline char foldLatinExtA(uint32_t cp) {
+    static const char table[] =
+        "AaAaAa" "CcCcCcCc" "DdDd" "EeEeEeEeEe" "GgGgGgGg" "HhHh"
+        "IiIiIiIiIi" "Ii" "Jj" "Kkk" "LlLlLlLlLl" "NnNnNnnNn" "OoOoOoOo"
+        "RrRrRr" "SsSsSsSs" "TtTtTt" "UuUuUuUuUuUu" "Ww" "YyY" "ZzZzZz" "s";
+    return table[cp - 0x100];
+}
+
+} // namespace search_detail
+
+// Lowercases ASCII and folds Latin letters with diacritics ("Málaga" ->
+// "malaga", "España" -> "espana"). Other scripts are copied unchanged.
 inline std::string normalizeForSearch(const std::string &input) {
     std::string out;
     out.reserve(input.size());
 
     for (size_t i = 0; i < input.size();) {
         unsigned char c = static_cast<unsigned char>(input[i]);
-
-        if (c < 128) {
-            out += static_cast<char>(std::tolower(c));
+        if (c < 0x80) {
+            out += static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
             i++;
             continue;
         }
 
-        if (i + 1 < input.size() && c == 0xC3) {
-            unsigned char c2 = static_cast<unsigned char>(input[i + 1]);
-            switch (c2) {
-            case 0x80:
-            case 0xA0:
-                out += 'a';
-                break;
-            case 0x81:
-            case 0xA1:
-                out += 'a';
-                break;
-            case 0x82:
-            case 0xA2:
-                out += 'a';
-                break;
-            case 0x83:
-            case 0xA3:
-                out += 'a';
-                break;
-            case 0x88:
-            case 0xA8:
-                out += 'e';
-                break;
-            case 0x89:
-            case 0xA9:
-                out += 'e';
-                break;
-            case 0x8A:
-            case 0xAA:
-                out += 'e';
-                break;
-            case 0x8B:
-            case 0xAB:
-                out += 'e';
-                break;
-            case 0x8C:
-            case 0xAC:
-                out += 'i';
-                break;
-            case 0x8D:
-            case 0xAD:
-                out += 'i';
-                break;
-            case 0x8E:
-            case 0xAE:
-                out += 'i';
-                break;
-            case 0x8F:
-            case 0xAF:
-                out += 'i';
-                break;
-            case 0x91:
-            case 0xB1:
-                out += 'n';
-                break;
-            case 0x92:
-            case 0xB2:
-                out += 'o';
-                break;
-            case 0x93:
-            case 0xB3:
-                out += 'o';
-                break;
-            case 0x94:
-            case 0xB4:
-                out += 'o';
-                break;
-            case 0x95:
-            case 0xB5:
-                out += 'o';
-                break;
-            case 0x96:
-            case 0xB6:
-                out += 'o';
-                break;
-            case 0x97:
-            case 0xB7:
-                out += 'o';
-                break;
-            case 0x99:
-            case 0xB9:
-                out += 'u';
-                break;
-            case 0x9A:
-            case 0xBA:
-                out += 'u';
-                break;
-            case 0x9B:
-            case 0xBB:
-                out += 'u';
-                break;
-            case 0x9C:
-            case 0xBC:
-                out += 'u';
-                break;
-            case 0x9D:
-            case 0xBD:
-                out += 'u';
-                break;
-            case 0x9E:
-            case 0xBE:
-                out += 'p';
-                break;
-            case 0x9F:
-            case 0xBF:
-                out += 'y';
-                break;
-            default:
-                out += static_cast<char>(std::tolower(c2));
+        size_t len = c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
+        if (len == 1 || i + len > input.size()) {
+            i++;
+            continue;
+        }
+        uint32_t cp = c & (0xFFu >> (len + 1));
+        bool valid = true;
+        for (size_t k = 1; k < len; ++k) {
+            unsigned char b = static_cast<unsigned char>(input[i + k]);
+            if ((b & 0xC0) != 0x80) {
+                valid = false;
                 break;
             }
-            i += 2;
+            cp = (cp << 6) | (b & 0x3F);
+        }
+        if (!valid) {
+            i++;
             continue;
         }
 
-        out += static_cast<char>(std::tolower(c));
-        i++;
+        if (cp >= 0xC0 && cp <= 0xFF) {
+            out += search_detail::foldLatin1(cp);
+        } else if (cp >= 0x100 && cp <= 0x17F) {
+            char folded = search_detail::foldLatinExtA(cp);
+            out += static_cast<char>(folded >= 'A' && folded <= 'Z'
+                                         ? folded + 32
+                                         : folded);
+        } else {
+            out.append(input, i, len);
+        }
+        i += len;
     }
-
     return out;
 }
 
 inline bool isSubsequence(const std::string &query, const std::string &text) {
-    if (query.empty()) {
-        return true;
-    }
     size_t qi = 0;
-    for (unsigned char c : text) {
+    for (char c : text) {
         if (qi < query.size() && c == query[qi]) {
             qi++;
         }
@@ -153,147 +98,135 @@ inline bool isSubsequence(const std::string &query, const std::string &text) {
     return qi == query.size();
 }
 
-inline bool wordMatchesQuery(const std::string &normText,
-                             const std::string &normQuery) {
-    if (normQuery.empty()) {
-        return true;
-    }
-
-    size_t start = 0;
-    while (start < normText.size()) {
-        while (start < normText.size() && !std::isalnum(normText[start])) {
-            start++;
+// True if `query` is a subsequence of a single word of `text` (a run of
+// alphanumerics or non-ASCII bytes): "bilbo" matches "bilbao" but not letters
+// scattered over a whole phrase.
+inline bool isWordSubsequence(const std::string &query,
+                              const std::string &text) {
+    size_t i = 0;
+    while (i < text.size()) {
+        auto inWord = [&](char c) {
+            return search_detail::isAsciiAlnum(c) ||
+                   (static_cast<unsigned char>(c) >= 0x80);
+        };
+        while (i < text.size() && !inWord(text[i])) {
+            i++;
         }
-        if (start >= normText.size()) {
-            break;
+        size_t qi = 0;
+        while (i < text.size() && inWord(text[i])) {
+            if (qi < query.size() && text[i] == query[qi]) {
+                qi++;
+            }
+            i++;
         }
-
-        size_t end = start;
-        while (end < normText.size() && std::isalnum(normText[end])) {
-            end++;
-        }
-
-        std::string word = normText.substr(start, end - start);
-        if (word.find(normQuery) != std::string::npos ||
-            (normQuery.size() >= 3 && isSubsequence(normQuery, word)) ||
-            (word.size() >= normQuery.size() &&
-             word.compare(0, normQuery.size(), normQuery) == 0)) {
+        if (qi == query.size()) {
             return true;
         }
-        start = end;
     }
     return false;
 }
 
-inline std::vector<std::string> searchTokens(const std::string &query) {
-    std::vector<std::string> tokens;
-    std::string norm = normalizeForSearch(query);
-    std::istringstream stream(norm);
-    std::string token;
-    while (stream >> token) {
-        if (!token.empty()) {
-            tokens.push_back(token);
-        }
-    }
-    if (tokens.empty() && !norm.empty()) {
-        tokens.push_back(norm);
-    }
-    return tokens;
-}
-
-inline bool matchesNormalized(const std::string &normText,
-                              const std::string &normQuery) {
-    if (normQuery.empty()) {
-        return true;
-    }
-    if (normText.find(normQuery) != std::string::npos) {
-        return true;
-    }
-    if (normQuery.size() >= 3 && isSubsequence(normQuery, normText)) {
-        return true;
-    }
-    return wordMatchesQuery(normText, normQuery);
-}
-
-inline bool matchesQuery(const std::string &text, const std::string &query) {
-    if (query.empty()) {
-        return true;
-    }
-
-    std::string normText = normalizeForSearch(text);
-    std::string normQuery = normalizeForSearch(query);
-
-    if (normQuery.empty()) {
-        return true;
-    }
-
-    if (normText.find(normQuery) != std::string::npos) {
-        return true;
-    }
-
-    if (normText.size() >= normQuery.size() &&
-        normText.compare(0, normQuery.size(), normQuery) == 0) {
-        return true;
-    }
-
-    if (normQuery.size() >= 3 && isSubsequence(normQuery, normText)) {
-        return true;
-    }
-
-    if (wordMatchesQuery(normText, normQuery)) {
-        return true;
-    }
-
-    auto tokens = searchTokens(normQuery);
-    if (tokens.empty()) {
-        return false;
-    }
-
-    for (const auto &token : tokens) {
-        if (token.size() < 2) {
-            if (normText.find(token) == std::string::npos) {
-                return false;
+// Whitespace-separated query tokens, matched against two fields (a primary
+// one such as the radio title and a secondary one such as the place). Lower
+// scores rank first; -1 means no match. Inputs must already be normalized.
+class QueryMatcher {
+  public:
+    explicit QueryMatcher(const std::string &query) {
+        std::string norm = normalizeForSearch(query);
+        size_t i = 0;
+        while (i < norm.size()) {
+            while (i < norm.size() && search_detail::isAsciiSpace(norm[i])) {
+                i++;
             }
-            continue;
+            size_t j = i;
+            while (j < norm.size() && !search_detail::isAsciiSpace(norm[j])) {
+                j++;
+            }
+            if (j > i) {
+                tokens_.push_back(norm.substr(i, j - i));
+            }
+            i = j;
         }
-        if (normText.find(token) == std::string::npos &&
-            !isSubsequence(token, normText) && !wordMatchesQuery(normText, token)) {
-            return false;
+    }
+
+    bool empty() const { return tokens_.empty(); }
+
+    bool canFuzzy() const {
+        return std::any_of(tokens_.begin(), tokens_.end(),
+                           [](const std::string &t) { return t.size() >= 3; });
+    }
+
+    int score(const std::string &primary, const std::string &secondary) const {
+        int total = 0;
+        for (const auto &token : tokens_) {
+            int p = substringCost(primary, token);
+            if (p >= 0) {
+                total += p;
+                continue;
+            }
+            int s = substringCost(secondary, token);
+            if (s < 0) {
+                return -1;
+            }
+            total += 100 + s;
         }
-    }
-    return true;
-}
-
-inline int matchScore(const std::string &text, const std::string &query) {
-    std::string normText = normalizeForSearch(text);
-    std::string normQuery = normalizeForSearch(query);
-
-    if (normQuery.empty()) {
-        return 1000;
-    }
-    if (normText == normQuery) {
-        return 0;
-    }
-    if (normText.find(normQuery) == 0) {
-        return 10;
-    }
-    if (normText.find(normQuery) != std::string::npos) {
-        return 50;
+        return total;
     }
 
-    auto tokens = searchTokens(normQuery);
-    bool allFound = true;
-    int earliest = static_cast<int>(normText.size());
-    for (const auto &token : tokens) {
-        size_t pos = normText.find(token);
+    // Like score(), but a token may also match as a subsequence within one
+    // word ("bilbo" -> "bilbao"). Only worth running when score() found nothing.
+    int fuzzyScore(const std::string &primary,
+                   const std::string &secondary) const {
+        int total = 0;
+        for (const auto &token : tokens_) {
+            int p = substringCost(primary, token);
+            if (p >= 0) {
+                total += p;
+                continue;
+            }
+            int s = substringCost(secondary, token);
+            if (s >= 0) {
+                total += 100 + s;
+                continue;
+            }
+            if (token.size() < 3) {
+                return -1;
+            }
+            if (isWordSubsequence(token, primary)) {
+                total += 500;
+            } else if (isWordSubsequence(token, secondary)) {
+                total += 600;
+            } else {
+                return -1;
+            }
+        }
+        return total;
+    }
+
+  private:
+    static int substringCost(const std::string &text, const std::string &tok) {
+        size_t pos = text.find(tok);
         if (pos == std::string::npos) {
-            allFound = false;
-            break;
+            return -1;
         }
-        earliest = std::min(earliest, static_cast<int>(pos));
+        int best = 1 << 20;
+        while (pos != std::string::npos) {
+            int cost;
+            if (pos == 0) {
+                cost = text.size() == tok.size() ? 0 : 5;
+            } else if (!search_detail::isAsciiAlnum(text[pos - 1])) {
+                cost = 15 + static_cast<int>(std::min<size_t>(pos, 64)) / 8;
+            } else {
+                cost = 40 + static_cast<int>(std::min<size_t>(pos, 64)) / 8;
+            }
+            best = std::min(best, cost);
+            if (best == 0 || best == 5) {
+                break;
+            }
+            pos = text.find(tok, pos + 1);
+        }
+        return best;
     }
-    if (allFound) {
-        return 100 + earliest;
-    }
-    return 10000;
-}
+
+    std::vector<std::string> tokens_;
+};

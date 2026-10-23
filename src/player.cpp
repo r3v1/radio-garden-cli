@@ -5,6 +5,7 @@
 
 #include <cerrno>
 #include <cstring>
+#include <fcntl.h>
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <signal.h>
@@ -157,7 +158,19 @@ bool MpvClient::launch(const std::string &url) {
 
     pid_ = fork();
     if (pid_ == 0) {
-        execlp("mpv", "mpv", "--no-video", "--really-quiet",
+        // mpv must not share the TUI's terminal: it would read the same
+        // keystrokes (Enter skips the playlist, [ ] change speed, q quits).
+        int devnull = open("/dev/null", O_RDWR);
+        if (devnull >= 0) {
+            dup2(devnull, STDIN_FILENO);
+            dup2(devnull, STDOUT_FILENO);
+            dup2(devnull, STDERR_FILENO);
+            if (devnull > STDERR_FILENO) {
+                close(devnull);
+            }
+        }
+        execlp("mpv", "mpv", "--no-video", "--really-quiet", "--no-terminal",
+               "--no-input-default-bindings",
                "--http-header-fields=Referer: https://radio.garden/",
                ("--input-ipc-server=" + socket_path_).c_str(), url.c_str(),
                nullptr);

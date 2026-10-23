@@ -1,12 +1,12 @@
 #pragma once
 
 #include <atomic>
-#include <chrono>
-#include <condition_variable>
+#include <cstdint>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include "radio.hpp"
@@ -22,9 +22,21 @@ struct SearchRow {
     RadioEntry entry;
     std::string norm_radio;
     std::string norm_place;
-    std::string norm_combined;
+    uint64_t rank = 0; // lower wins when a radio is listed on several places
 };
 
+struct PlaceHit {
+    int score;
+    Place place;
+};
+
+// In-memory index of every radio in a country. A pool of background workers
+// fills it from the per-place disk cache (or the network); searches run
+// synchronously on the caller's thread and only hold the lock for the scan.
+//
+// Radio Garden lists the same radio on several place pages, so the search
+// corpus holds each radio once (attributed to the best-fitting place), while
+// the per-place lists keep every page exactly as the API returned it.
 class RadioIndex {
   public:
     explicit RadioIndex(const std::string &country);
@@ -33,52 +45,48 @@ class RadioIndex {
     void startBackgroundBuild();
     void stopBackgroundBuild();
 
-    std::vector<RadioEntry> entries() const;
-    std::vector<Place> places() const;
-    size_t corpusSize() const;
+    size_t corpusSize() const { return corpus_size_; }
+    // Bumped every time radios are added to the corpus.
+    uint64_t version() const { return version_; }
 
-    int buildProgress() const;
-    int buildTotal() const;
-    bool isBuilding() const;
+    int buildProgress() const { return progress_; }
+    int buildTotal() const { return static_cast<int>(places_.size()); }
+    bool isBuilding() const { return building_; }
 
-    std::vector<Place> searchPlaces(const std::string &query) const;
+    const std::vector<Place> &places() const { return places_; }
+    // Radios listed on the place's page, in page order.
+    size_t placeRadioCount(const std::string &placeId) const;
 
-    void requestSearch(const std::string &query);
-    bool isSearchPending() const;
-    bool hasFreshSearchResults(const std::string &query) const;
-    std::vector<RadioEntry> getSearchResults() const;
+    std::vector<PlaceHit> searchPlaces(const std::string &query,
+                                       size_t limit) const;
+    std::vector<RadioEntry> searchRadios(const std::string &query,
+                                         size_t limit) const;
+    std::vector<RadioEntry> radiosInPlace(const std::string &placeId) const;
 
   private:
-    void buildLoop();
-    void loadIndexFromDisk();
-    void saveIndexToDisk() const;
-    void loadCorpusFromCache();
-    void appendToCorpus(const std::vector<RadioEntry> &batch);
-    void appendToCorpusLocked(const std::vector<RadioEntry> &batch);
+    void workerLoop();
+    void publish(size_t placeIndex, const std::vector<RadioEntry> &radios);
     bool loadPlaceFromCache(const std::string &placeId,
                             std::vector<RadioEntry> &out) const;
     void savePlaceToCache(const std::string &placeId,
                           const std::vector<RadioEntry> &entries) const;
-    std::vector<RadioEntry> searchCorpus(const std::string &query) const;
-    void searchWorkerLoop();
 
     std::string country_;
     std::vector<Place> places_;
-    std::vector<RadioEntry> entries_;
-    std::vector<SearchRow> corpus_;
+    std::vector<std::string> norm_places_;
+    std::unordered_map<std::string, size_t> place_index_;
+
     mutable std::mutex mutex_;
-    std::thread worker_;
-    std::thread search_worker_;
+    std::vector<SearchRow> corpus_;
+    std::unordered_map<std::string, uint32_t> row_by_radio_id_;
+    std::vector<std::vector<RadioEntry>> place_radios_; // by place index
+
+    std::vector<std::thread> workers_;
+    std::atomic<size_t> next_place_{0};
+    std::atomic<int> active_workers_{0};
     std::atomic<bool> stop_{false};
     std::atomic<bool> building_{false};
     std::atomic<int> progress_{0};
-    int total_{0};
-
-    mutable std::mutex search_mutex_;
-    std::condition_variable search_cv_;
-    std::string pending_query_;
-    std::string completed_query_;
-    std::vector<RadioEntry> search_results_;
-    std::atomic<bool> search_dirty_{false};
-    std::atomic<bool> search_stop_{false};
+    std::atomic<size_t> corpus_size_{0};
+    std::atomic<uint64_t> version_{0};
 };

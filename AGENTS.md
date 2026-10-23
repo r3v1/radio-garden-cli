@@ -26,15 +26,15 @@ unit per object file — no libraries or subdirectories.
 
 | Module | Role |
 |---|---|
-| `tui.cpp` | ncurses TUI with vim-like search (`/`), debounced background search (~55 ms) |
+| `tui.cpp` | ncurses TUI, vim-like modes (Normal/Search/Command), live search on every keystroke. A `PlayerBridge` thread owns all `PlayerController` calls so the UI never waits on mpv |
 | `player.cpp` | Singleton `PlayerController` → `MpvClient` (fork+Unix socket IPC) |
-| `index.cpp` | `RadioIndex` — background thread fetches radio pages for all places in the country; search is in-memory across cached corpus |
+| `index.cpp` | `RadioIndex` — 4 background workers load/fetch the radio page of every place in the country; search is synchronous and in-memory (~0.1 ms). Never do disk/network I/O while holding `mutex_` |
 | `mpris.cpp` | systemd `sd-bus` MPRIS D-Bus server (media keys) |
 | `radio.cpp` | Radio Garden API JSON parsing and URL building |
 | `requests.cpp` | libcurl HTTP with cached JSON writes |
 | `state.cpp` | Playback persistence (`~/.config/radio-garden-cli/state.json`) |
 | `paths.cpp` | XDG directory helpers |
-| `search_utils.hpp` | Header-only: UTF-8 normalization, substring/subsequence/word-boundary matching |
+| `search_utils.hpp` | Header-only: accent-folding `normalizeForSearch`, `QueryMatcher` (token substring scoring, per-word fuzzy fallback) |
 
 **Data flow:**
 1. Places list fetched from `radio.garden/api/ara/content/places` → cached at
@@ -42,7 +42,11 @@ unit per object file — no libraries or subdirectories.
 2. On TUI start, `RadioIndex` background worker fetches radio pages for every
    place in the selected country, caching each to
    `~/.cache/radio-garden-cli/places/<id>.json`.
-3. Search reads from the in-memory corpus (no disk/HTTP on hot path).
+3. Search reads from the in-memory corpus (no disk/HTTP on hot path). A radio
+   is listed on many place pages, so the corpus keeps each radio once, while
+   the per-place lists (used by the place view) keep the page as returned.
+4. Background HTTP errors go to `~/.cache/radio-garden-cli/tui.log`, not the
+   screen (stderr is redirected while the TUI runs).
 
 ## Key details
 

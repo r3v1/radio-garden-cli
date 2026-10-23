@@ -79,12 +79,14 @@ void helpMenu() {
     std::cout << "  -t, --tui\t\tLaunch TUI (Spain)" << std::endl;
     std::cout << "  -v, --version\t\tShow version" << std::endl;
     std::cout << std::endl;
-    std::cout << "TUI keys:" << std::endl;
-    std::cout << "  Navigate: j/k move, h back, l/Enter select, / search"
+    std::cout << "TUI keys (vim-like, press ? inside for the full list):"
               << std::endl;
-    std::cout << "  Search: type freely (incl. h/j/k/l), Esc done, Enter confirm"
+    std::cout << "  Move: j/k, gg/G, Ctrl-d/u, 5j; l/Enter open/play, h back"
               << std::endl;
-    std::cout << "  Media: Space pause, ] next, [ prev" << std::endl;
+    std::cout << "  Search: / (live), Esc leaves, Enter plays, : commands"
+              << std::endl;
+    std::cout << "  Media: Space pause, ]/n next, [/N prev, S stop, q quit"
+              << std::endl;
 }
 
 void showVersion() { std::cout << "Radio Garden CLI v0.3.0" << std::endl; }

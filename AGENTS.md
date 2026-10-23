@@ -11,7 +11,7 @@ pacman -S nlohmann-json mpv libcurl ncurses systemd-libs
 
 make            # produces ./radio
 ./radio         # TUI scoped to Spain, resumes last station
-./radio --help  # flags: -h, -l, -p <place>, -t, -v
+./radio --help  # flags: -h, -l, -p <place>, -s <name>, -t, -v
 make clean      # rm ./radio
 ```
 
